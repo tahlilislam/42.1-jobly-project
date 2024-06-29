@@ -5,7 +5,7 @@
 const jsonschema = require("jsonschema");
 
 const express = require("express");
-const { ensureLoggedIn } = require("../middleware/auth");
+const { ensureLoggedIn, ensureAdminUser, ensureCorrectUserOrAdmin } = require("../middleware/auth");
 const { BadRequestError } = require("../expressError");
 const User = require("../models/user");
 const { createToken } = require("../helpers/tokens");
@@ -24,10 +24,10 @@ const router = express.Router();
  * This returns the newly created user and an authentication token for them:
  *  {user: { username, firstName, lastName, email, isAdmin }, token }
  *
- * Authorization required: login
+ * Authorization required: login as admin
  **/
 
-router.post("/", ensureLoggedIn, async function (req, res, next) {
+router.post("/", ensureLoggedIn, ensureAdminUser, async function (req, res, next) {
   try {
     const validator = jsonschema.validate(req.body, userNewSchema);
     if (!validator.valid) {
@@ -48,10 +48,10 @@ router.post("/", ensureLoggedIn, async function (req, res, next) {
  *
  * Returns list of all users.
  *
- * Authorization required: login
+ * Authorization required: login as admin
  **/
 
-router.get("/", ensureLoggedIn, async function (req, res, next) {
+router.get("/",ensureLoggedIn ,ensureAdminUser, async function (req, res, next) {
   try {
     const users = await User.findAll();
     return res.json({ users });
@@ -65,12 +65,14 @@ router.get("/", ensureLoggedIn, async function (req, res, next) {
  *
  * Returns { username, firstName, lastName, isAdmin }
  *
- * Authorization required: login
+ * Authorization required: login as admin or the specific user who owns the account
  **/
 
-router.get("/:username", ensureLoggedIn, async function (req, res, next) {
+router.get("/:username",ensureLoggedIn, ensureCorrectUserOrAdmin, async function (req, res, next) {
   try {
     const user = await User.get(req.params.username);
+    const jobs = await User.getApplications(req.params.username);
+    user.jobs = jobs;
     return res.json({ user });
   } catch (err) {
     return next(err);
@@ -85,10 +87,10 @@ router.get("/:username", ensureLoggedIn, async function (req, res, next) {
  *
  * Returns { username, firstName, lastName, email, isAdmin }
  *
- * Authorization required: login
+ * Authorization required: login as admin or specific user who owns the account
  **/
 
-router.patch("/:username", ensureLoggedIn, async function (req, res, next) {
+router.patch("/:username",ensureLoggedIn, ensureCorrectUserOrAdmin, async function (req, res, next) {
   try {
     const validator = jsonschema.validate(req.body, userUpdateSchema);
     if (!validator.valid) {
@@ -106,10 +108,10 @@ router.patch("/:username", ensureLoggedIn, async function (req, res, next) {
 
 /** DELETE /[username]  =>  { deleted: username }
  *
- * Authorization required: login
+ * Authorization required: login or specific user who owns the account
  **/
 
-router.delete("/:username", ensureLoggedIn, async function (req, res, next) {
+router.delete("/:username",ensureLoggedIn, ensureCorrectUserOrAdmin, async function (req, res, next) {
   try {
     await User.remove(req.params.username);
     return res.json({ deleted: req.params.username });
@@ -117,6 +119,16 @@ router.delete("/:username", ensureLoggedIn, async function (req, res, next) {
     return next(err);
   }
 });
+
+router.post("/:username/jobs/:id", ensureLoggedIn, ensureCorrectUserOrAdmin, async function (req, res, next) {
+  try {
+    await User.applyToJob(req.params.username, req.params.id);
+    return res.status(201).json({ applied: req.params.id });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 
 
 module.exports = router;
@@ -129,4 +141,15 @@ module.exports = router;
 // admin
 // {
 // 	"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InRlc3RhZG1pbiIsImlzQWRtaW4iOnRydWUsImlhdCI6MTcxOTI3NTkzNX0._s6juwKc2mbBuTHTJrWnKT2vEO3AGOedJ-oJU3ZNk1U"
+// }
+
+// // {
+// 	"user": {
+// 		"username": "tahz",
+// 		"firstName": "Tahz",
+// 		"lastName": "Iss",
+// 		"email": "tahz@gmail.com",
+// 		"isAdmin": true
+// 	},
+// 	"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InRhaHoiLCJpc0FkbWluIjp0cnVlLCJpYXQiOjE3MTk1OTU0Mzd9.CYWEGjWec_5Y9WX2bqATG-m_xOFpfIuat2O3C6HwXxs"
 // }

@@ -6,11 +6,12 @@ const jsonschema = require("jsonschema");
 const express = require("express");
 
 const { BadRequestError } = require("../expressError");
-const { ensureLoggedIn } = require("../middleware/auth");
+const { ensureLoggedIn, ensureAdminUser } = require("../middleware/auth");
 const Company = require("../models/company");
 
 const companyNewSchema = require("../schemas/companyNew.json");
 const companyUpdateSchema = require("../schemas/companyUpdate.json");
+const { validateQueryParams } = require("../middleware/validateQueryParams");
 
 const router = new express.Router();
 
@@ -20,23 +21,28 @@ const router = new express.Router();
  *
  * Returns { handle, name, description, numEmployees, logoUrl }
  *
- * Authorization required: login
+ * Authorization required: login as admin
  */
 
-router.post("/", ensureLoggedIn, async function (req, res, next) {
-  try {
-    const validator = jsonschema.validate(req.body, companyNewSchema);
-    if (!validator.valid) {
-      const errs = validator.errors.map((e) => e.stack);
-      throw new BadRequestError(errs);
-    }
+router.post(
+  "/",
+  ensureLoggedIn,
+  ensureAdminUser,
+  async function (req, res, next) {
+    try {
+      const validator = jsonschema.validate(req.body, companyNewSchema);
+      if (!validator.valid) {
+        const errs = validator.errors.map((e) => e.stack);
+        throw new BadRequestError(errs);
+      }
 
-    const company = await Company.create(req.body);
-    return res.status(201).json({ company });
-  } catch (err) {
-    return next(err);
+      const company = await Company.create(req.body);
+      return res.status(201).json({ company });
+    } catch (err) {
+      return next(err);
+    }
   }
-});
+);
 
 /** GET /  =>
  *   { companies: [ { handle, name, description, numEmployees, logoUrl }, ...] }
@@ -49,9 +55,8 @@ router.post("/", ensureLoggedIn, async function (req, res, next) {
  * Authorization required: none
  */
 
-router.get("/", async function (req, res, next) {
+router.get("/", validateQueryParams, async function (req, res, next) {
   try {
-    debugger;
     const q = req.query;
     const filters = {
       name: q.name,
@@ -59,18 +64,6 @@ router.get("/", async function (req, res, next) {
       minEmployees: q.minEmployees ? +q.minEmployees : undefined,
       maxEmployees: q.maxEmployees ? +q.maxEmployees : undefined,
     };
-
-    // Validate the minEmployee and maxEmployee relationship
-    if (
-      filters.minEmployees !== undefined &&
-      filters.maxEmployees !== undefined
-    ) {
-      if (filters.minEmployees > filters.maxEmployees) {
-        throw new BadRequestError(
-          "minEmployees cannot be greater than maxEmployees"
-        );
-      }
-    }
 
     const companies = await Company.findAll(filters);
 
@@ -105,36 +98,46 @@ router.get("/:handle", async function (req, res, next) {
  *
  * Returns { handle, name, description, numEmployees, logo_url }
  *
- * Authorization required: login
+ * Authorization required: login as admin
  */
 
-router.patch("/:handle", ensureLoggedIn, async function (req, res, next) {
-  try {
-    const validator = jsonschema.validate(req.body, companyUpdateSchema);
-    if (!validator.valid) {
-      const errs = validator.errors.map((e) => e.stack);
-      throw new BadRequestError(errs);
-    }
+router.patch(
+  "/:handle",
+  ensureLoggedIn,
+  ensureAdminUser,
+  async function (req, res, next) {
+    try {
+      const validator = jsonschema.validate(req.body, companyUpdateSchema);
+      if (!validator.valid) {
+        const errs = validator.errors.map((e) => e.stack);
+        throw new BadRequestError(errs);
+      }
 
-    const company = await Company.update(req.params.handle, req.body);
-    return res.json({ company });
-  } catch (err) {
-    return next(err);
+      const company = await Company.update(req.params.handle, req.body);
+      return res.json({ company });
+    } catch (err) {
+      return next(err);
+    }
   }
-});
+);
 
 /** DELETE /[handle]  =>  { deleted: handle }
  *
- * Authorization: login
+ * Authorization: login as admin
  */
 
-router.delete("/:handle", ensureLoggedIn, async function (req, res, next) {
-  try {
-    await Company.remove(req.params.handle);
-    return res.json({ deleted: req.params.handle });
-  } catch (err) {
-    return next(err);
+router.delete(
+  "/:handle",
+  ensureLoggedIn,
+  ensureAdminUser,
+  async function (req, res, next) {
+    try {
+      await Company.remove(req.params.handle);
+      return res.json({ deleted: req.params.handle });
+    } catch (err) {
+      return next(err);
+    }
   }
-});
+);
 
 module.exports = router;
